@@ -1,0 +1,134 @@
+#include <opencv2/opencv.hpp>
+#include <istream>
+#include <string>
+#include <math.h>
+
+using namespace std;
+using namespace cv;
+
+float calRms(Mat img1, Mat img2)//计算均方根误差函数
+{
+	float e;
+	unsigned a = 0;
+	int m = img1.rows, n = img1.cols;
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			a = a + pow((img2.at<uchar>(i, j) - img1.at<uchar>(i, j)), 2);
+		}
+	}
+	e = pow(a / m / n, 0.5);
+	return e;
+}
+
+float calSnr(Mat img1, Mat img2)//计算信噪比函数
+{
+	float s;
+	unsigned a = 0, b = 0;
+	int m = img1.rows, n = img1.cols;
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			a = a + pow((img2.at<uchar>(i, j) - img1.at<uchar>(i, j)), 2);
+			b = b + pow(img2.at<uchar>(i, j), 2);
+		}
+	}
+	s = b / a;
+	return s;
+}
+int main()
+{
+	char k[100];
+	cout << "the path of image：" << endl;
+	cin.getline(k, 100);
+	Mat img1 = imread(k, 0);
+	if (img1.empty())
+	{
+		cout << "error!" << endl;
+		return -1;
+	}//读取图片
+	int y;
+	cout << "the number of largest：" << endl;
+	cin >> y;
+	int a = img1.rows / 8 + 1;
+	int b = img1.cols / 8 + 1;
+	Mat img2;
+	copyMakeBorder(img1, img2, 0, 8*a - img1.rows, 0, 8*a - img1.cols, BORDER_CONSTANT, Scalar::all(0));//扩展图片尺寸（8的整数倍）
+	for (int i = 0; i < a; i++)
+	{
+		for (int j = 0; j < b; j++)
+		{
+			Mat img(8, 8, CV_32FC1);
+			for (int r = i * 8, f = 0; r < i * 8 + 8, f < 8; r++, f++)//读取8*8个数据
+			{
+				for (int t = j * 8, g = 0; t < j * 8 + 8, g < 8; t++, g++)
+				{
+					img.at<float>(f, g) = img2.at<uchar>(r, t);
+				}
+			}
+			dct(img-128, img);//离散余弦变换
+			Mat imgf(img.size(), CV_32FC1);
+			for (int f = 0; f < img.rows; f++)
+			{
+				for (int g = 0; g < img.cols; g++)
+				{
+					imgf.at<float>(f, g) = abs(img.at<float>(f,g));
+				}
+			}
+			Mat T = Mat::zeros(1, 8, CV_32FC1), X = Mat::zeros(1, 8, CV_8UC1), Y = Mat::zeros(1, 8, CV_8UC1), mask = Mat::zeros(img.size(), CV_8UC1);
+			for (int n = 0; n < y; n++)//获取阈值
+			{
+				for (int c = 0; c < 8; c++)
+				{
+					for (int d = 0; d < 8; d++)
+					{
+						if (imgf.at<float>(c, d)>T.at <float>(0, n))
+						{
+							T.at<float>(0, n) = imgf.at<float>(c, d);
+							X.at<uchar>(0, n) = c;
+							Y.at<uchar>(0, n) = d;
+						}
+					}
+				}
+				imgf.at<float>(X.at<uchar>(0, n), Y.at<uchar>(0, n)) = 0;
+				mask.at<uchar>(X.at<uchar>(0, n), Y.at<uchar>(0, n)) = 1;//得到模板
+			}
+			for (int q = 0; q < img.rows; q++)//量化
+			{
+				for (int p = 0; p < img.cols; p++)
+				{
+					img.at<float>(q, p) = img.at<float>(q, p) * mask.at<uchar>(q, p);
+				}
+			}
+			idct(img, img);//离散余弦反变换
+			for (int r = i * 8, f = 0; r < i * 8 + 8, f < 8; r++, f++)//最终计算结果返回原位置
+			{
+				for (int t = j * 8, g = 0; t < j * 8 + 8, g < 8; t++, g++)
+				{
+					img2.at<uchar>(r, t) = img.at<float>(f, g) +128;
+				}
+			}
+		}
+	}
+	for (int u = 0; u < img1.rows; u++)//获得原图像大小的处理后图像
+	{
+		for (int v = 0; v < img1.cols; v++)
+		{
+			img1.at<uchar>(u, v) = img2.at<uchar>(u, v);
+		}
+	}
+	Mat img5 = imread(k, 0);
+	float e = calRms(img5, img1);
+	float s = calSnr(img5, img1);
+	imwrite("F://transform_dct.bmp", img1);
+	cout << "**********" << endl;
+	cout << "均方根误差=" << e << endl;
+	cout << "信噪比=" << s << endl;
+	cout << "**********" << endl;
+	imshow("source image", img5);
+	imshow("transform", img1);
+	waitKey();
+	return 0;
+}
